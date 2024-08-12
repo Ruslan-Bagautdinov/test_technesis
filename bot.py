@@ -5,8 +5,8 @@ import sqlite3
 import pandas as pd
 import requests
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
 from aiogram import F
+from aiogram.filters import Command
 from loguru import logger
 from lxml import html
 
@@ -127,7 +127,6 @@ async def handle_document(message: types.Message):
 
 
 async def main():
-
     create_database_and_table()
     logger.info("Starting bot")
     await dp.start_polling(bot)
