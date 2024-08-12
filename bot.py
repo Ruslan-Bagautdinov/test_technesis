@@ -1,10 +1,12 @@
 import asyncio
+import re
 import sqlite3
 
 import pandas as pd
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from loguru import logger
 from lxml import html
 
 from config import BOT_TOKEN
@@ -12,7 +14,6 @@ from config import BOT_TOKEN
 # Токен вашего бота
 TOKEN = BOT_TOKEN
 
-# Инициализация бота и диспетчера
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -20,8 +21,16 @@ dp = Dispatcher()
 def parse_price(url, xpath):
     response = requests.get(url)
     tree = html.fromstring(response.content)
-    price = tree.xpath(xpath)
-    return price[0].text.strip() if price else None
+    price_elements = tree.xpath(xpath)
+    if not price_elements:
+        return None
+
+    price_text = price_elements[0].text.strip()
+    # Используем регулярное выражение для извлечения числа из строки
+    price_match = re.search(r'(\d+[\s\.,]*\d*)\s*(руб|\s*₽|$)', price_text)
+    if price_match:
+        return price_match.group(1).replace(' ', '').replace(',', '.')
+    return None
 
 
 def calculate_average_price(df):
@@ -29,7 +38,7 @@ def calculate_average_price(df):
     for index, row in df.iterrows():
         price = parse_price(row['url'], row['xpath'])
         if price:
-            prices.append(float(price.replace(' ', '').replace('₽', '')))
+            prices.append(float(price))
     return sum(prices) / len(prices) if prices else None
 
 
@@ -45,10 +54,28 @@ def process_file(file_path):
     return df
 
 
+def create_database_and_table():
+    with sqlite3.connect('sites.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                url TEXT NOT NULL,
+                xpath TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+
+
 def save_to_db(df):
-    conn = sqlite3.connect('sites.db')
-    df.to_sql('sites', conn, if_exists='replace', index=False)
-    conn.close()
+    try:
+        with sqlite3.connect('sites.db') as conn:
+            df.to_sql('sites', conn, if_exists='replace', index=False)
+    except sqlite3.Error as e:
+        logger.error(f'Database error: {e}')
+        return str(e)
+    return None
 
 
 @dp.message(Command("start"))
@@ -58,16 +85,25 @@ async def start(message: types.Message):
 
 @dp.message(content_types=types.ContentType.DOCUMENT)
 async def handle_document(message: types.Message):
-    file_id = message.document.file_id
-    file_path = await save_file(file_id)
-    df = process_file(file_path)
-    average_price = calculate_average_price(df)
-    await message.reply(f'Средняя цена: {average_price}')
-    save_to_db(df)
-    await message.reply(f'Файл обработан и сохранен. Содержимое:\n{df.to_string()}')
+    try:
+        file_id = message.document.file_id
+        file_path = await save_file(file_id)
+        df = process_file(file_path)
+        average_price = calculate_average_price(df)
+        await message.reply(f'Средняя цена: {average_price}')
+
+        db_error = save_to_db(df)
+        if db_error:
+            await message.reply(f'Произошла ошибка при сохранении в базу данных: {db_error}')
+        else:
+            await message.reply(f'Файл обработан и сохранен. Содержимое:\n{df.to_string()}')
+    except Exception as e:
+        logger.error(f'Error: {e}')
+        await message.reply(f'Произошла ошибка: {e}')
 
 
 async def main():
+    create_database_and_table()
     await dp.start_polling(bot)
 
 
