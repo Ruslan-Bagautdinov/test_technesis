@@ -6,6 +6,7 @@ import pandas as pd
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram import F
 from loguru import logger
 from lxml import html
 
@@ -82,7 +83,8 @@ async def start(message: types.Message):
     await message.reply('Привет! Отправьте мне файл Excel для обработки.')
 
 
-@dp.message(content_types=types.ContentType.DOCUMENT)
+@dp.message(F.document.mime_type.in_(
+    {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"}))
 async def handle_document(message: types.Message):
     try:
         file_id = message.document.file_id
