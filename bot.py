@@ -26,7 +26,6 @@ def parse_price(url, xpath):
         return None
 
     price_text = price_elements[0].text.strip()
-    # Используем регулярное выражение для извлечения числа из строки
     price_match = re.search(r'(\d+[\s\.,]*\d*)\s*(руб|\s*₽|$)', price_text)
     if price_match:
         return price_match.group(1).replace(' ', '').replace(',', '.')
