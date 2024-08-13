@@ -3,4 +3,5 @@
 .venv
 .env
 bot.log
+sites.db
 files/*
